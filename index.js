@@ -1,13 +1,13 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
-import db from './utils/db.js'
-import userRoutes from './routes/user.routes.js'
-import CookieParser from 'cookie-parser';
+import db from './utils/db.js';
+import userRoutes from './routes/user.routes.js';
 import cookieParser from 'cookie-parser';
+import { errorHandler } from './middleware/error.middleware.js';
+import { NotFoundError } from './utils/ApiError.js';
 
-
-const app=express();
+const app = express();
 dotenv.config();
 
 const PORT = process.env.PORT || 4000;
@@ -30,9 +30,16 @@ db();
 //     res.send("Hello");
 // })
 
-app.use('/api/v1/users',userRoutes);
+app.use('/api/v1/users', userRoutes);
 
+// Handle unknown routes
+app.use((req, res, next) => {
+  next(new NotFoundError(`Route ${req.method} ${req.originalUrl} not found`));
+});
 
-app.listen(PORT,()=>{
-    console.log(`Server Running on Port ${PORT}`);
-})
+// Global error handler (must come last)
+app.use(errorHandler);
+
+app.listen(PORT, () => {
+  console.log(`Server Running on Port ${PORT}`);
+});

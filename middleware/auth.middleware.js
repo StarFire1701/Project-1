@@ -1,25 +1,22 @@
 import jwt from 'jsonwebtoken'
-export const isLoggedIn = async(req,res,next)=>{
-    // Get the token
-    // Validate the token if it exists
-    // Extract the data from the token
-    try{
-        let token = req.cookies?.token
-        if(!token){
-            return res.status(404).json({
-                message:"Authentication Failed",
-                success:false
-            })
-        }
-        const decoded = jwt.verify(token,process.env.JWT_SECRET);
-        req.user = decoded;
-        next();
-    } catch(err){
-        console.log(err);
-        return res.status(400).json({
-            message:"Some error occured in auth middleware",
-            success:false
-        })
+import { UnauthorizedError } from '../utils/ApiError.js'
+
+export const isLoggedIn = async (req, res, next) => {
+  try {
+    const token = req.cookies?.token;
+    if (!token) {
+      throw new UnauthorizedError('Authentication Failed');
     }
-   
-}
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    // Normalize JWT verification errors into UnauthorizedError
+    if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
+      return next(new UnauthorizedError('Invalid or expired token'));
+    }
+
+    next(err);
+  }
+};
