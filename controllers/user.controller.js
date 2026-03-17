@@ -107,15 +107,15 @@ const verifyUser = async (req, res) => {
   });
 }
 
-const loginUser = async (req, res) => {
+const loginUser = async (req, res,next) => {
   const { email, password } = req.body;
   if (!email || !password) {
     throw new BadRequestError('Email or Password is missing');
   }
-
-  const user = await User.findOne({ email });
+  try{
+    const user = await User.findOne({ email });
   if (!user) {
-    throw new NotFoundError('Could not find user');
+    throw new UnauthorizedError('Invalid credentials');
   }
 
   const isMatch = await bcrypt.compare(password, user.password);
@@ -123,40 +123,62 @@ const loginUser = async (req, res) => {
     throw new UnauthorizedError('Incorrect ID or Password');
   }
 
-  if (user.verificationToken != null || user.isVerified === false) {
+  if (user.isVerified === false) {
     throw new UnauthorizedError('Please verify yourself first');
   }
 
-  const token = jwt.sign(
+  const accessToken = jwt.sign(
     {
       id: user._id,
       role: user.role,
     },
-    process.env.JWT_SECRET,
+    process.env.JWT_ACCESS_SECRET,
     {
-      expiresIn: '24h',
+      expiresIn: '15m',
     }
   );
-
-  const cookieOptions = {
+  const refreshToken = jwt.sign(
+    {
+      id: user._id,
+      role: user.role,
+    },
+    process.env.JWT_REFRESH_SECRET,
+    {
+      expiresIn: '7d',
+    }
+  )
+  const cookieOptions_access = {
     httpOnly: true,
     secure: true,
-    maxAge: 1000 * 60 * 60 * 24,
+    maxAge: 1000 * 60 * 15,
+    sameSite: 'strict'
+  };
+  const cookieOptions_refresh = {
+    httpOnly: true,
+    secure: true,
+    maxAge: 1000 * 60 * 60 * 24 * 7,
+    sameSite:'strict'
   };
 
-  res.cookie('token', token, cookieOptions);
+  user.refreshToken = refreshToken;
+  await user.save();
+
+  res.cookie('accessToken', accessToken, cookieOptions_access);
+  res.cookie('refreshToken', refreshToken, cookieOptions_refresh);
 
   return res.status(200).json({
     success: true,
     statusCode: 200,
     message: 'User logged in successfully',
-    token,
     user: {
       id: user._id,
       name: user.name,
       role: user.role,
     },
   });
+  } catch(err){
+      next(err);
+  }
 }
 
 const getMe = async (req, res) => {
@@ -175,13 +197,26 @@ const getMe = async (req, res) => {
   });
 }
 
-const logoutUser = async (req, res) => {
+const logoutUser = async (req,res,next) => {
   try {
-    res.clearCookie('token', {
+    const id= req.user.id;
+    const user = await User.findById(id);
+    if(!user){
+      throw new UnauthorizedError('Invalid User');
+    }
+
+    res.clearCookie('accessToken', {
       httpOnly: true,
       secure: true,
       sameSite: 'strict',
     });
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'strict',
+    });
+    user.refreshToken=null;
+    await user.save();
 
     return res.status(200).json({
       success: true,
@@ -189,8 +224,7 @@ const logoutUser = async (req, res) => {
       message: 'User logged out successfully',
     });
   } catch (err) {
-    console.error(err);
-    throw new InternalServerError('Some error occured in try block');
+    next(err);
   }
 }
 
@@ -278,5 +312,93 @@ const resetPassword = async (req, res) => {
   }
 }
 
+const generateNewToken = async(req,res,next) =>{
+  // get the refresh token from the cookie
+  // validate the token
+  // compare the token from database
+  // clear the current refresh token from cookie
+  // generate new access token
+  // generate new refresh token
+  // save the refresh token in database
+  // set the new  access token in cookie
+  // set the new refesh token in cookie
+  // send success message to user
+  try{
+    const refreshToken = req.cookies?.refreshToken;
+    if(!refreshToken){
+      throw new UnauthorizedError('Authentication Failed');
+    }
 
-export {registerUser,verifyUser,loginUser,getMe,logoutUser,forgotPassword,resetPassword};
+    const decoded = jwt.verify(refreshToken,process.env.JWT_REFRESH_SECRET);
+    // No need to write the if not decoded because jwt itself will throw the error
+
+    const user= await User.findById(decoded.id);
+    if(!user){
+      throw new UnauthorizedError('Invalid User');
+    }
+
+    const isTokenMatch = await bcrypt.compare(refreshToken,user.refreshToken);
+    if(!isTokenMatch){
+      throw new UnauthorizedError('Invalid User')
+    }
+
+
+
+    res.clearCookie('accessToken', {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'strict',
+    });
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'strict',
+    });
+
+    const accessToken = jwt.sign({
+      id:user._id,
+      role:user.role
+    }, process.env.JWT_ACCESS_SECRET,
+  {
+    expiresIn:'15m'
+  })
+
+  const newrefreshToken = jwt.sign({
+      id:user._id,
+      role:user.role
+    }, process.env.JWT_REFRESH_SECRET,
+  {
+    expiresIn:'7d'
+  })
+
+  user.refreshToken=newrefreshToken;
+
+  await user.save();
+  const cookieOptions_access = {
+    httpOnly: true,
+    secure: true,
+    maxAge: 1000 * 60 * 15,
+    sameSite: 'strict'
+  };
+  const cookieOptions_refresh = {
+    httpOnly: true,
+    secure: true,
+    maxAge: 1000 * 60 * 60 * 24 * 7,
+    sameSite:'strict'
+  };
+
+  res.cookie("accessToken",accessToken,cookieOptions_access);
+  res.cookie("refreshToken",newrefreshToken,cookieOptions_refresh);
+
+  return res.status(200).json({
+    success: true,
+    statusCode: 200,
+    message: 'Access Token and Refresh Token set',
+  });
+
+  }catch(err){
+    next(err);
+  }
+}
+
+export {registerUser,verifyUser,loginUser,getMe,logoutUser,forgotPassword,resetPassword,generateNewToken};
