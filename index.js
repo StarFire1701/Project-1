@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import db from './utils/db.js';
 import userRoutes from './routes/user.routes.js';
+import postRoutes from './routes/post.routes.js'
 import cookieParser from 'cookie-parser';
 import { errorHandler } from './middleware/error.middleware.js';
 import { NotFoundError } from './utils/ApiError.js';
@@ -16,7 +17,8 @@ const PORT = process.env.PORT || 4000;
 app.use(cors({
     origin:process.env.BASE_URL,
     methods:['GET','POST','PUT','DELETE','PATCH'],
-    allowedHeaders:['Content-Type','Authorization']
+    allowedHeaders:['Content-Type','Authorization'],
+    credentials:true
 }))
 app.use(cookieParser())
 
@@ -31,6 +33,7 @@ db();
 // })
 
 app.use('/api/v1/users', userRoutes);
+app.use('/api/v1/post',postRoutes);
 
 // Handle unknown routes
 app.use((req, res, next) => {

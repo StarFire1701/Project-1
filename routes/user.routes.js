@@ -8,9 +8,9 @@ router.post("/register",registerUser);
 router.get("/verify/:token",verifyUser);
 router.post("/login",loginUser);
 router.post("/me", isLoggedIn, getMe);
-router.get("/logout",isLoggedIn,logoutUser);
+router.post("/logout",isLoggedIn,logoutUser);
 router.get("/forgotPassword",forgotPassword);
-router.patch("/resetPassword/:token",resetPassword);
+router.patch("/resetPassword/:reset_token",resetPassword);
 router.post("/refresh-token",generateNewToken);
 
 export default router;
